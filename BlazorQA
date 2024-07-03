@@ -1,0 +1,973 @@
+@page "/questionAndAnswers"
+@rendermode @(new InteractiveServerRenderMode(false))
+@using FusionPortal.Infrastructure.Entities
+@using Microsoft.FluentUI.AspNetCore.Components
+@using System.Globalization
+@using FusionPortal.AppServices.Services
+@using Microsoft.AspNetCore.Authentication.Cookies
+@using MongoDB.Bson
+@using System.Text.RegularExpressions
+
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject IQuestionModelService QuestionService1
+@inject IAnswerModelService AnswerService1
+@inject IDialogService DialogService
+@inject IToastService ToastService
+@inject IEmployeeService Employee
+@inject IBlogModel BlogModelService
+@inject MyStateContainer myStateContainer
+@inject IUserDataService userDataService
+@inject IAnswerReactionServices IAnswerReactionsServices
+@inject IAnsCommentService IAnsCommentService
+
+
+
+<EditForm Model="@this" OnValidSubmit="async ()=>{await OnSearch(new List<TagData>(){});}" style="margin: 20px 0px;">
+    <FluentGrid>
+        <FluentGridItem  sm="12" md="9" Style="">
+            <FluentGrid>
+                <FluentGridItem xs="12" md="10">
+                    <FluentSearch @bind-Value=searchValue Class="textboxuser" Placeholder="Search your Question here....." @ref="searchInputRef" style="width:100%;">
+                        <FluentIcon Value="@(new Icons.Regular.Size16.Globe())" Color="@Color.Neutral" Slot="start" Style="display:none;" />
+
+
+                        <FluentButton Type="ButtonType.Submit" Disabled="Loading" Style="margin-left:-10px;border:solid 1px #3dac7d; ">
+                            <FluentIcon Value="@(new Icons.Filled.Size20.Search())" Slot="end" />
+                        </FluentButton>
+
+
+                    </FluentSearch>
+                </FluentGridItem>
+
+                <FluentGridItem xs="12" md="2" Style="">
+                    <FluentButton Class="Button" Style="" @onclick="postQuestion" Disabled=false>Ask a Question</FluentButton>
+                </FluentGridItem>
+            </FluentGrid>
+          
+           
+           
+
+                   
+        
+
+         
+           
+
+          
+
+           
+        </FluentGridItem>
+       
+        
+       @*  <FluentGridItem xs="12" sm="4" md="2" Style="display:none">
+            <FluentAutocomplete TOption="UserData"
+                                AutoComplete="off"
+                                Disabled=false
+                                OnOptionsSearch="OnSearchQuestion"
+                                Placeholder="Question By"
+                                MaximumOptionsSearch="int.MaxValue"
+                                Virtualize="true"
+                                OptionText="@(item => $"{item.NickName}")"
+                                @bind-SelectedOptions="@questionBy"
+                                Class="textboxuser" />
+        </FluentGridItem>
+
+        <FluentGridItem xs="12" sm="4" md="2" Style="display:none">
+            <FluentAutocomplete TOption="UserData" Class="textboxuser"
+                                AutoComplete="off"
+                                Disabled=false
+                                OnOptionsSearch="OnSearchAnswer"
+                                Placeholder="Answered By"
+                                MaximumOptionsSearch="int.MaxValue"
+                                Virtualize="true"
+                                OptionText="@(item => $"{item.NickName}")"
+                                @bind-SelectedOptions="@answerBy" />
+
+        </FluentGridItem> *@
+
+       @*  <FluentGridItem>
+            <FluentSelect name="class" Id="classification" @bind-Value="dateFilter" TOption="string">
+                <FluentOption Value="0">All Dates</FluentOption>
+                <FluentOption Value="7">Past Week</FluentOption>
+                <FluentOption Value="30">Past Month</FluentOption>
+                <FluentOption Value="180">Past Six Months</FluentOption>
+                <FluentOption Value="360">Past One Year</FluentOption>
+
+            </FluentSelect>
+
+        </FluentGridItem> *@
+
+       @*  <FluentGridItem>
+            <FluentButton BackgroundColor="#3DAC7D" Color="White" Type="ButtonType.Submit">Search</FluentButton>
+        </FluentGridItem>
+        <FluentGridItem>
+            <FluentButton OnClick="@Refresh">Clear</FluentButton>
+        </FluentGridItem>
+ *@
+    </FluentGrid>
+
+
+</EditForm>
+
+
+<FluentGridItem @onclick="async ()=>{ await dropDownRemoval(); await dropDownRemovalForQuestions();}">
+
+    <FluentGrid AdaptiveRendering="true" Style="padding: 4px;margin:10px;" @rendermode="RenderMode.InteractiveAuto" Justify="JustifyContent.FlexStart">
+
+        @if (Loading)
+        {
+            <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.Center" Style="height:25rem;align-items:center;">
+                <LoaderPage></LoaderPage>
+            </FluentStack>
+        }
+        else
+        {
+            <FluentGridItem xs="12" sm="12" md="9" lg="9" AdaptiveRendering="true">
+
+
+                @if (data1 != null && data1.Count() != 0)
+                {
+                    pagination.SetTotalItemCountAsync(data1.Count());
+                    <FluentDataGrid Items="@data1" Pagination="pagination" TGridItem="QuestionWithAnswersModel" >
+                        <ChildContent>
+                            @if (pagination.TotalItemCount != null && pagination.ItemsPerPage > 0)
+                            {
+                               
+                                int pageIndex = pagination.CurrentPageIndex;
+                                int totalCount = data1.Count();
+                                int pageSize = pagination.ItemsPerPage;
+                                int startIndex = pageIndex * pageSize;
+                                int endIndex = Math.Min(startIndex + pageSize, totalCount);
+                                var recordsForPage = data1.Skip(startIndex).Take(pageSize).ToList();
+
+                                <FluentStack>
+                                    <FluentGrid Style="width:125rem !important">
+                                        @foreach (var k in recordsForPage.GroupBy(obj => obj.Question.CreatedDate).OrderBy(x => x.Key).Reverse())
+                                        {
+
+                                            @foreach (var i in recordsForPage.Where(x => x.Question.CreatedDate == k.Key).ToList())
+                                            {
+                                                <FluentGrid xs="12" Justify="JustifyContent.FlexEnd" Style="display:flex;flex-direction:column;border-right:solid 3px #F8F8F8;border-bottom:solid 3px #F8F8F8;">
+
+                                                    <FluentGridItem xs="12" Style="display:flex;flex-direction:column;">
+
+                                                        <FluentGrid AdaptiveRendering="true">
+                                                            <FluentGridItem xs="12" sm="12" md="1" Style="">
+
+                                                                <FluentGrid Style="">
+                                                                    <FluentGridItem xs="12" sm="12" md="0" Style="font-size: 23px; margin: auto;margin-bottom: -18px;margin-top: 30px;"> @i.Answers.Count()</FluentGridItem>
+                                                                    <FluentGridItem xs="12" sm="12" md="0" Style=" margin: auto;">Answers</FluentGridItem>
+                                                                </FluentGrid>
+
+                                                            </FluentGridItem>
+                                                            <FluentGridItem xs="12" sm="12" md="11">
+                                                                <FluentGridItem xs="12">
+                                                                    <FluentLabel Typo="Typography.H4" Style="" Class="link-text" @onclick="async ()=>{await singleQnA(i.Question.Id);}">
+                                                                        @if (i.Question.Title != null)
+                                                                        {
+                                                                            @((MarkupString)i.Question.Title)
+                                                                        }
+                                                                    </FluentLabel>
+
+                                                                </FluentGridItem>
+                                                                <FluentGridItem xs="6">
+                                                                    <FluentLabel Typo="Typography.H6" Style="padding-bottom: 3px;">
+                                                                        @{
+                                                                            if (i.Question.Name.Length <= 200)
+                                                                            {
+                                                                                @((MarkupString)i.Question.Name)
+                                                                            }
+                                                                            else
+                                                                            {
+                                                                                var truncatedContent = i.Question.Name.Substring(0, 200);
+                                                                                var questionContent = System.Text.RegularExpressions.Regex.Replace(truncatedContent, @"<\/?(p|span)[^>]*>", string.Empty);
+                                                                                @((MarkupString)(questionContent + "..."))
+                                                                            }
+                                                                        }
+                                                                    </FluentLabel>
+
+                                                                </FluentGridItem>
+
+                                                                <FluentGridItem xs="12">
+                                                                    <FluentGridItem xs="12">
+                                                                        <FluentLabel Typo="Typography.H6" Justify="JustifyContent.FlexEnd">
+
+
+                                                                            <FluentGrid AdaptiveRendering="true" Justify="JustifyContent.FlexEnd" Style="">
+                                                                                <FluentGridItem Justify="JustifyContent.FlexStart" xs="12" sm="12" md="6">
+                                                                                    @{
+                                                                                        List<TagData> relatedTag = Task.Run(async () => await BlogModelService.GetTagNameByTagIdAsync(i.Question.TagId)).Result;
+
+                                                                                        <FluentButton Appearance="Appearance.Stealth" Style="font-size:12px;border-radius9px;" @onclick="()=>{OnSearchTags(new List<TagData>() { relatedTag.FirstOrDefault()});}">
+
+                                                                                            <span> @relatedTag.Select(X => X.TagName).FirstOrDefault()</span>
+
+                                                                                        </FluentButton>
+                                                                                    }
+                                                                                </FluentGridItem>
+                                                                                <FluentGridItem AdaptiveRendering="true" Justify="JustifyContent.FlexEnd" Style="margin:auto;padding-right: 17px; " xs="12" sm="12" md="6">
+
+
+
+                                                                                    <FluentGrid AdaptiveRendering="true" Style="padding-top: 0px; margin-right: 17px; ">
+
+
+
+
+                                                                                        <FluentIcon Value="@(new Icons.Regular.Size12.Person())" Style="border:1px solid skyblue;border-radius: 11px; margin: 10px;" />
+
+                                                                                        <FluentLabel Typo="Typography.H6" Style="padding-top:5px;">
+
+                                                                                            @i.Question.CreatedUserName
+                                                                                        </FluentLabel>
+
+                                                                                    </FluentGrid>
+
+                                                                                    <FluentGrid AdaptiveRendering="true" Style="margin-left: 12px;margin-top: 5px;color:#929292 !important;">
+                                                                                        asked  @(i.Question.CreatedDate.ToString("MMMM d, yyyy"))
+                                                                                        @if (userInfo != null && i.Answers.Where(x => x.QuestionId == i.Question.Id).Count() == 0)
+                                                                                        {
+
+                                                                                            if (userInfo.NickName == i.Question.CreatedUserName)
+                                                                                            {
+
+                                                                                                <img src="/images/edits.png" style="max-height:15px;color:black;padding-left: 10px;;margin-top: 3px;" @onclick="@(e => editQuestion(i.Question.Id))" type="button" />
+                                                                                            }
+                                                                                        }
+                                                                                    </FluentGrid>
+                                                                                </FluentGridItem>
+                                                                            </FluentGrid>
+
+
+
+
+
+                                                                        </FluentLabel>
+                                                                    </FluentGridItem>
+
+
+
+                                                                </FluentGridItem>
+
+
+
+                                                            </FluentGridItem>
+
+
+
+
+                                                        </FluentGrid>
+
+
+                                                    </FluentGridItem>
+
+                                                </FluentGrid>
+
+                                            }
+                                        }
+
+                                    </FluentGrid>
+
+
+                                </FluentStack>
+                               
+                            }
+
+                           
+                        </ChildContent>
+                       
+                    </FluentDataGrid>
+
+                    <FluentPaginator State="@pagination" Style="margin-top:21px;" />
+                
+                }
+                else
+                {
+                    <FluentGrid>
+                        <h6 style="justify-content:center; align-items:center;color: #3DAC7D;margin: auto;">No records found !</h6>
+                    </FluentGrid>
+
+                }
+
+            </FluentGridItem>
+
+
+
+        }
+
+        <FluentGridItem xs="12" sm="12" md="3" lg="3">
+
+            @{
+
+                List<TagData> relatedTag = Task.Run(async () => await QuestionService1.GetTagNameRelatedToQnA()).Result;
+                List<QuestionWithAnswersModel> records = Task.Run(async () => await QuestionService1.GetAllAsync(new QusetionSearchFilterModel())).Result;
+                var groupedRecords = records.GroupBy(x => x.Question.TagId).ToList();
+                @foreach (var group in groupedRecords)
+                {
+
+                    <FluentButton Appearance="Appearance.Stealth" @onclick="()=>{OnSearchTags(new List<TagData>() { new TagData() { Id = group.Key} });}" Style="margin: 5px;">
+                        @{
+                            List<TagData> names = Task.Run(async () => await BlogModelService.GetTagNameByTagIdAsync(group.Key)).Result;
+                        }
+                        @foreach (var tagData in names.OrderBy(x => x.TagName))
+                        {
+                            if (data != null)
+                            {
+                                @if (tagslists.Any(x => x.Id == tagData.Id) && tagslists.Count()!=0 && tagStatus)
+                                {
+                                    <span style="color:#3DAC7D">
+                                        &#x2713;
+                                        @tagData.TagName : @records.Count(x => x.Question.TagId == group.Key)
+                                    </span>
+                                }
+                                else
+                                {
+
+                                    <span> @tagData.TagName: @records.Count(x => x.Question.TagId == group.Key) </span>
+                                }
+                            }
+                            else
+                            {
+                                <span> @tagData.TagName: @records.Count(x => x.Question.TagId == group.Key) </span>
+                            }
+
+
+
+
+                        }
+                    </FluentButton>
+
+                }
+
+                }
+        </FluentGridItem>
+        
+
+    </FluentGrid>
+
+</FluentGridItem>
+
+
+
+<style>
+    .dropdown-toggle::after {
+        display: inline-block;
+        margin-left: 2.255em;
+        vertical-align: .255em;
+        content: "";
+        border-top: .3em solid;
+        border-right: .3em solid transparent;
+        border-bottom: 0;
+        border-left: .3em solid transparent;
+    }
+
+  
+    .Button::part(neutral) {
+       background: #3dac7d !important;
+       color:whitesmoke;
+
+    }
+    .textboxuser::after {
+        border-bottom: none;
+    }
+    .textboxuser{
+        display: flex;
+        flex-direction: row-reverse;
+    }
+    fluent-data-grid-row {
+        display: none;
+    }
+
+    .link-text {
+        color: #145fa9 !important;
+        cursor: pointer;
+    }
+
+        .link-text:hover {
+            color: #2596be !important;
+        }
+
+    .fluent-option {
+        background: #fbfbfb;
+    }
+
+    .fluent-autocomplete-multiselect div[role=listbox][b-hg72r5b4ox] fluent-option:not([disabled])[selectable] {
+        background: #fbfbfb;
+    }
+
+    .nav-link-hover:hover {
+        color: blue !important; /* Change to your desired hover color */
+    }
+
+    .Button::part(control) {
+        border: 1px solid #3dac7d !important;
+        border-radius: 5px;
+        background: #3dac7d !important;
+        color: #fbfbfb;
+    }
+
+    .control.icon-only{
+        color: #fbfbfb !important
+        background: none !important;
+    }
+
+    .valid::part(root) {
+        border: 1px solid #3dac7d !important;
+        border-radius: 5px;
+        width:100%;
+        border-bottom-right-radius: 0px !important;
+        border-top-right-radius: 0px !important;
+    }
+
+
+
+    .fluent-grid.MessageCenter {
+    }
+
+    .isDropDownSuccess {
+        display: block;
+        position: relative;
+    }
+
+    .isDropDownFail {
+        display: none;
+    }
+
+
+
+    .img {
+        padding: 2px;
+        height: 3rem;
+        background-image: url('/images/HeadingBgImage.png');
+        border-radius: 5px;
+        background-repeat: no-repeat;
+        background-size: cover;
+        background-position: center;
+        min-width: 81.7rem;
+    }
+
+    .outline::part(root) {
+        border: 1px solid #3dac7d !important;
+        border-radius: 5px;
+    }
+
+    .fluent-persona {
+        margin-top: -14px;
+    }
+
+    .fluent-presence-badge {
+        width: 25px;
+        height: 3px;
+        font-size: 8px;
+        /* color: red; */
+        margin-top: -27px;
+        margin-right: 5px;
+    }
+
+    #classification {
+        min-width: 169px;
+    }
+
+        #classification::part(control) {
+            border: 1px solid #3dac7d !important;
+            border-radius: 5px;
+        }
+
+    .horizontal-scroll {
+        min-width: 124px !important;
+    }
+
+    fluent-badge {
+        font-size: 7px;
+    }
+</style>
+
+@code
+{
+
+    [Parameter]
+    public List<QuestionWithAnswersModel> data { get; set; }
+    public List<DropdownItem> items { get; set; } = new List<DropdownItem>();
+    public List<DropdownItem> itemsForQuestions { get; set; } = new List<DropdownItem>();
+    public string dropdownStatus { get; set; }
+    public string dropdownStatusForQuestion { get; set; }
+    public bool isDropdownOpen = false;
+    public bool isDropdownOpenForQuestion = false;
+
+    [Inject]
+    private IHttpContextAccessor HttpContextAccessor { get; set; }
+    private FluentSearch searchInputRef;
+    List<ObjectId> employeeIdQue = new List<ObjectId>();
+    List<ObjectId> employeeIdAns = new List<ObjectId>();
+
+    PaginationState pagination{ get; set; } = new PaginationState { ItemsPerPage = 5  };
+
+    public bool Loading { get; set; } = true;
+    public bool dropDownLoading1 { get; set; }
+    public bool dropDownLoading2 { get; set; }
+
+
+    public DateTime? SelectedFrom { get; set; }
+    public DateTime? SelectedTo { get; set; }
+    [SupplyParameterFromQuery]
+    public bool tosteStatus { get; set; } = false;
+    [SupplyParameterFromQuery]
+    public string operation { get; set; }
+
+    public bool postedByStatus { get; set; } = false;
+    public string MessageDisplay { get; set; }
+
+
+
+    private string? question = string.Empty;
+    private string? _searchValue = string.Empty;
+
+    public string? searchValue
+    {
+        get { return _searchValue; }
+        set
+        {
+
+            if (value == "")
+            {
+                _searchValue = null;
+                OnSearch(new List<TagData>());
+            }
+            else
+            {
+                _searchValue = value; 
+            }
+        }
+    }
+
+
+    public int likeCount { get; set; } = 0;
+    public string answeredBy { get; set; }
+    public string dateFilter { get; set; }
+    private static string defaultResultsText = "No results";
+    private List<string> searchData = null;
+    private ToastMessageService ToastMessageService { get; set; }
+
+    public IQueryable<QuestionWithAnswersModel> data1 { get; set; }
+    public UserData userInfo { get; set; }
+
+
+    IEnumerable<UserData> answerBy = Array.Empty<UserData>();
+    IEnumerable<UserData> questionBy = Array.Empty<UserData>();
+    List<TagData> tagslists = new List<TagData>();
+    IEnumerable<TagData> rightsideTagsLists = Array.Empty<TagData>();
+    IEnumerable<UserData> Cultures1 = new List<UserData>();
+    IEnumerable<TagData> tagsFromDb = Array.Empty<TagData>();
+
+    public bool commentStatus { get; set; }
+    public ObjectId commentId { set; get; }
+    public string comment { get; set; }
+    public List<AnswerCommentData> CommentList { get; set; }
+    private bool commentArea = false;
+    public List<AnswerReactionsData> likeList { get; set; }
+    public int ReactionId { get; set; }
+    public int displayComments { get; set; } = 3;
+    public int commentCount { get; set; }
+    public IEnumerable<UserData> employeeList = new List<UserData>();
+    public bool refreshControlforAnswer { get; set; }
+    public bool refreshControlforQuestion { get; set; }
+
+    public User UserName { get; set; }
+
+    public bool refreshStatus { get; set; } = false;
+    public List<TagData> gridTags { get; set; }
+    private bool parentAfterRenderCompleted = false;
+    public bool tagStatus { get; set; } = false;
+    public bool display { get; set; } = true;
+
+    private void OnSearchQuestion(OptionsSearchEventArgs<UserData> e)
+    {
+        e.Items = Cultures1.Where(culture =>
+        culture.NickName.Contains(e.Text, StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.NickName);
+    }
+    private void OnSearchAnswer(OptionsSearchEventArgs<UserData> e)
+    {
+        e.Items = Cultures1.Where(culture =>
+            culture.NickName.Contains(e.Text, StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.NickName);
+    }
+
+    private void OnSearchTag(OptionsSearchEventArgs<TagData> e)
+    {
+        if (tagsFromDb != null)
+        {
+            ObjectId Id = new ObjectId("6656f268ff74fdb7f34501b8");
+
+            e.Items = tagsFromDb.Where(culture1 => culture1.TagName.Contains(e.Text, StringComparison.OrdinalIgnoreCase) && culture1.TagTypeId == Id);
+        }
+    }
+
+
+
+    protected async override Task OnInitializedAsync()
+    {
+
+        try
+        {
+            employeeList = (await QuestionService1.GetAllUserAsync()).ToList();
+            ToastMessageService = myStateContainer.Value;
+            if (Loading)
+            {
+                QusetionSearchFilterModel questionService = null;
+                data = await QuestionService1.GetAllAsync(questionService);
+                data1 = data.AsQueryable<QuestionWithAnswersModel>();
+
+                Cultures1 = (await QuestionService1.GetAllUserAsync()).ToList();
+                userInfo = await userDataService.GetUserData();
+                tagsFromDb = (await QuestionService1.GetTagNameAsync());
+                CommentList = (await IAnsCommentService.GetAllAsync());
+                likeList = (await IAnswerReactionsServices.GetAllAsync());
+                Loading = false;
+            }
+        }
+        catch (Exception ex)
+        {
+
+            Console.WriteLine($"An error occurred while fetching data: {ex.Message}");
+        }
+
+    }
+
+    protected async override void OnAfterRender(bool firstRender)
+    {
+
+        if (firstRender)
+        {
+            searchInputRef.FocusAsync();
+        }
+
+        if (ToastMessageService != null)
+        {
+            if (ToastMessageService.tosteStatus)
+            {
+                Toaster();
+
+            }
+            ToastMessageService.tosteStatus = false;
+        }
+    
+
+    }
+    private async Task jsEvent(string content)
+    {
+        await JSRuntime.InvokeVoidAsync("ContentInput", content, "not");
+    }
+
+    public async Task Refresh()
+    {
+        SelectedFrom = null;
+        SelectedTo = null;
+        searchValue = null;
+        answerBy = Array.Empty<UserData>();
+        questionBy = Array.Empty<UserData>();
+        tagslists = new List<TagData>();
+        items.ForEach(x => x.Selected = false);
+        itemsForQuestions.ForEach(x => x.Selected = false);
+        refreshControlforAnswer = true;
+        refreshControlforQuestion = true;
+        postedByStatus = false;
+        dateFilter = "0";
+        QusetionSearchFilterModel questionService = null;
+        data = await QuestionService1.GetAllAsync(questionService);
+        data1 = data.AsQueryable<QuestionWithAnswersModel>();
+        refreshStatus = true;
+        gridTags = null;
+        StateHasChanged();
+    }
+
+    public void postAnswers(string id)
+    {
+
+        var queryStrDict = new Dictionary<string, string>
+            {
+                ["OperationFor"] = "Answer",
+                ["Id"] = id.ToString(),
+            };
+        NavigationManager.NavigateTo(
+            Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/text", queryStrDict)
+        );
+
+    }
+    public async Task postQuestion()
+    {
+
+        var queryStrDict = new Dictionary<string, string>
+            {
+                ["OperationFor"] = "Question",
+
+            };
+        NavigationManager.NavigateTo(
+            Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/text", queryStrDict)
+        );
+
+    }
+    public async Task editQuestion(ObjectId id)
+    {
+        QuestionsData question = await QuestionService1.GetByIdAsync(id);
+
+        var queryStrDict = new Dictionary<string, string>
+            {
+                ["OperationFor"] = "Question",
+                ["Id"] = question.Id.ToString(),
+            };
+        NavigationManager.NavigateTo(
+            Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/text", queryStrDict)
+        );
+
+    }
+    public async Task editAnswers(ObjectId id)
+    {
+        AnswersData answer = await AnswerService1.GetByIdAsync(id);
+
+        var queryStrDict = new Dictionary<string, string>
+            {
+                ["OperationFor"] = "Answer",
+                ["Id"] = answer.Id.ToString(),
+            };
+        NavigationManager.NavigateTo(
+            Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/text", queryStrDict)
+        );
+    }
+
+
+    private async Task OnSearch(List<TagData> tags)
+    {
+        
+
+
+        if (answerBy.Count() != 0)
+        {
+            postedByStatus = true;
+        }
+        else
+        {
+            postedByStatus = false;
+        }
+
+        string searchTerm = searchValue?.ToLower();
+
+        if (answerBy.Count() != 0)
+        {
+            postedByStatus = true;
+
+        }
+        else
+        {
+
+            postedByStatus = false;
+            answerBy = Array.Empty<UserData>();
+            answeredBy = null;
+        }
+
+
+
+
+        DateTime? fromDate = SelectedFrom;
+        DateTime? toDate = SelectedTo;
+
+        QusetionSearchFilterModel questionSearch = new QusetionSearchFilterModel()
+                {
+                    Question = searchTerm,
+                    QuestionBy = questionBy.Select(x => x.Id).ToList(),
+                    AnswerBy = answerBy.Select(x => x.Id).ToList(),
+
+                    Tags = tagslists.Select(x => x.Id).ToList(),
+
+                    FromDate = SelectedFrom,
+                    ToDate = SelectedTo,
+                    dateFilter = DateTime.Now.AddDays(-(Convert.ToDouble(dateFilter))),
+                };
+        if (tagslists.Count() == 0)
+        {
+            tagStatus = false;
+            tagslists = new List<TagData>();
+        }
+        else
+        {
+            tagStatus = true;
+        }
+       
+        data = await QuestionService1.GetAllAsync(questionSearch);
+        data1 = data.AsQueryable<QuestionWithAnswersModel>();
+
+        if (data1.Count() == 0)
+        {
+            display = false;
+            MessageDisplay = "No Records Found!";
+            StateHasChanged();
+            return;
+        }
+        else
+        {
+            display = true;
+            StateHasChanged();
+        }
+
+        isDropdownOpenForQuestion = false;
+        isDropdownOpen = false;
+        StateHasChanged();
+
+
+
+    }
+    private async Task OnSearchTags(List<TagData> tags)
+    {
+        searchValue = null;
+        dateFilter = "0";
+
+
+        if (tags.Count != 0)
+        {
+            tagStatus = true;
+
+            if (tagslists.Any(x => x.Id == tags.Select(x => x.Id).FirstOrDefault()))
+            {
+                var matchedTags = tags.Where(tag => tagslists.Any(taglist => taglist.Id == tag.Id)).ToList();
+                tagslists.RemoveAll(x => x.Id == tags.Select(x => x.Id).FirstOrDefault());
+            }
+            else
+            {
+                tagslists.Add(tags.FirstOrDefault());
+            }
+
+
+            OnSearch(tagslists);
+
+       }
+    }
+
+    bool? canceled;
+
+    private async Task ShowSuccessAsync()
+    {
+        var dialog = await DialogService.ShowSuccessAsync(operation);
+        var result = await dialog.Result;
+        canceled = result.Cancelled;
+    }
+
+    private void Toaster()
+    {
+
+
+        ToastService.ShowSuccess(ToastMessageService.operation, 5000);
+    }
+
+
+
+    public async Task commentHandler(ObjectId id)
+    {
+        if (id != null && comment != null)
+        {
+
+
+            commentStatus = await IAnsCommentService.SaveAsync(new AnswerCommentData()
+                {
+                    AnswerId = id,
+                    Comment = comment,
+                    IsDeleted = false,
+                    PostedDate = DateTime.UtcNow,
+                    PostedBy = userInfo.UserId
+
+                });
+
+
+            comment = null;
+            //  commentArea = !commentArea;
+            displayComments = 3;
+            CommentList = (await IAnsCommentService.GetAllAsync());
+            StateHasChanged();
+        }
+
+    }
+    public async Task openComment(ObjectId id)
+    {
+        commentArea = !commentArea;
+        commentId = id;
+        displayComments = 3;
+
+    }
+    public async Task likeHandler(ObjectId id, ObjectId operationId)
+    {
+        if (id != null && operationId != null)
+        {
+            AnswerReactionsData model = await IAnswerReactionsServices.GetByIdAsync(id, userInfo.Id);
+            if (model != null)
+            {
+                model.ReactionId = operationId;
+                bool isSuccess = await IAnswerReactionsServices.SaveAsync(model);
+            }
+            else
+            {
+                await IAnswerReactionsServices.SaveAsync(new AnswerReactionsData()
+                    {
+                        AnswerId = id,
+                        ReactionId = operationId,
+                        IsDeleted = false,
+                        PostedDate = DateTime.Now,
+                        PostedBy = userInfo.Id
+                    });
+            }
+            likeList = (await IAnswerReactionsServices.GetAllAsync());
+            StateHasChanged();
+        }
+    }
+    public async Task ToggleDropdown()
+    {
+        isDropdownOpen = !isDropdownOpen;
+        isDropdownOpenForQuestion = false;
+
+    }
+    public async Task ToggleDropdownForQuestions()
+    {
+        isDropdownOpenForQuestion = !isDropdownOpenForQuestion;
+        isDropdownOpen = false;
+
+
+    }
+    public async Task ToggleCheckbox(DropdownItem item)
+    {
+        item.Selected = !item.Selected;
+
+    }
+    private async Task dropDownRemovalForQuestions()
+    {
+
+
+        isDropdownOpenForQuestion = false;
+
+    }
+    private async Task dropDownRemoval()
+    {
+
+        isDropdownOpen = false;
+
+
+    }
+
+    private void HandleSearchInputChange(ChangeEventArgs e)
+    {
+        itemsForQuestions = itemsForQuestions.Where(culture => culture.Label.Contains(e.Value.ToString(), StringComparison.OrdinalIgnoreCase)).ToList();
+
+
+    }
+    public async Task singleQnA(ObjectId id)
+    {
+
+
+        var queryStrDict = new Dictionary<string, string>
+            {
+
+                ["Id"] = id.ToString(),
+            };
+        NavigationManager.NavigateTo(
+            Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/singleQuestionWithMultipleAnswers", queryStrDict)
+        );
+    }
+
+
+}
