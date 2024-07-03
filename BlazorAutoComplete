@@ -1,0 +1,877 @@
+@page "/displayblogs"
+@rendermode InteractiveServer
+@inject IBlogService BlogModelService
+@inject ITagTypeService TagTypeService
+@using FusionPortal.Common
+@using System.Timers
+@using Microsoft.AspNetCore.Components
+@using MongoDB.Bson
+@using Microsoft.AspNetCore.Authentication
+@using System.Text.RegularExpressions;
+@inject IUserDataService userDataService
+@inject IUserDataService userDataService
+
+@inject IBlogCommentsService IBlogCommentServices
+@inject IBlogReactionsService IBlogReactionsServices
+@using System.Globalization
+@using FusionPortal.Model
+@inject IJSRuntime JSRuntime
+@inject NavigationManager Navigation
+@using System.Web;
+@inject IJSRuntime JSRuntime
+@inject IDialogService DialogService
+@inject IToastService ToastService
+@inject IEmployeeService Employee
+@inject MyStateContainer myStateContainer
+@using static FusionPortal.Infrastructure.Common.DomainConstants
+@using FusionPortal.Infrastructure.Dtos
+@using FusionPortal.Infrastructure.Interfaces
+@using FusionPortal.Infrastructure.Service
+
+@using Microsoft.FluentUI
+@using System.Collections.Generic;
+
+
+<FluentGrid AdaptiveRendering="true" Style=" padding: 4px;margin:10px;">
+    <FluentGridItem xs="12" md="12" Class="bgimg">
+        <FluentLabel Typo="Typography.H4" style="font-family:Poppins;margin-left:5px;margin-top:2px; color:#ffffff;">Blogs</FluentLabel>
+        <FluentButton Class="Btn" style="width:120px;height:40px;margin-top:-35px ;color:#3DAC7D;border:#3DAC7D 5px solid;float:right;border-radius:20px;  background-color:whitesmoke" @onclick="PostBlog">Post a Blog</FluentButton>
+    </FluentGridItem>
+</FluentGrid>
+
+
+<EditForm Model="@this" style="margin:1px;">
+    <FluentGrid Style="border: solid 1px #3DAC7D; height: auto;padding: 10px;margin-top:15px;   border-radius: 5px; background-color: #F8F8F8;">
+        <FluentGridItem xs="12" sm="4" md="2" lg="2">
+            <FluentSearch Placeholder="Title" @bind-Value="blogTitle" Class="textboxuser" @ref="searchInputRef" />
+        </FluentGridItem>
+
+        <FluentGridItem xs="12" sm="4" md="2">
+            <FluentAutocomplete TOption="UserData"
+                                AutoComplete="off"
+                                Disabled=false
+                                OnOptionsSearch="OnSearchBlog1"
+                                Placeholder="Posted By"
+                                MaximumOptionsSearch="int.MaxValue"
+                                Virtualize="true"
+                                OptionText="@(item => $"{item.UserName}")"
+                                @bind-SelectedOptions="@userslist" Class="textboxuser" />
+        </FluentGridItem>
+
+        <FluentGridItem xs="12" sm="4" md="2">
+            <FluentAutocomplete TOption="TagData" Class="textboxuser"
+                                AutoComplete="off"
+                                Disabled=false
+                                OnOptionsSearch="OnSearchTag"
+                                Placeholder="Tag Name"
+                                MaximumOptionsSearch="int.MaxValue"
+                                Virtualize="true"
+                                OptionText="@(item => $"{item.TagName}")"
+                                @bind-SelectedOptions="@tagslists">
+                <FooterContent Context="item">
+                    @if (!item.Any())
+                    {
+                        <FluentLabel Style="font-size:12px;font-family:Poppins; text-align: center;border:1px solid grey;">No Tags found</FluentLabel>
+                    }
+                </FooterContent>
+            </FluentAutocomplete>
+        </FluentGridItem>
+
+
+        <FluentGridItem xs="12" sm="4" md="2">
+            <FluentSearch @bind-Value="blogContent" Placeholder="Content" Class="textboxuser" />
+        </FluentGridItem>
+
+        <FluentGridItem xs="12" sm="4" md="2" lg="2">
+            <FluentSelect name="class" Id="classification" @bind-Value="dateFilter" TOption="string" Disabled=false>
+                <FluentOption Value="0">All Dates</FluentOption>
+                <FluentOption Value="7">Last Week</FluentOption>
+                <FluentOption Value="30">Last Month</FluentOption>
+                <FluentOption Value="180">Last Six Months</FluentOption>
+                <FluentOption Value="360">Last One Year</FluentOption>
+            </FluentSelect>
+        </FluentGridItem>
+
+        <FluentGridItem xs="4" sm="2" md="1" lg="1" Style="">
+            <FluentButton BackgroundColor="#3DAC7D" Color="White" @onclick="SearchBlogs">Search</FluentButton>
+        </FluentGridItem>
+
+        <FluentGridItem xs="0" sm="0" md="1" lg="1" Style="">
+            <FluentButton OnClick="@Refresh" Color="#737373" Class="textboxuser">Clear</FluentButton>
+        </FluentGridItem>
+    </FluentGrid>
+</EditForm>
+
+<FluentGrid AdaptiveRendering="true" Style="padding: 4px;margin:10px;" @rendermode="RenderMode.InteractiveAuto" Justify="JustifyContent.Center">
+    @if (Loading)
+    {
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.Center" Style="margin-top:15%">
+
+            <LoaderPage></LoaderPage>
+        </FluentStack>
+    }
+</FluentGrid>
+
+@if (display)
+{
+    @if (data1!=null)
+    {
+        pagination.SetTotalItemCountAsync(data1.Count());
+        <FluentDataGrid Items="@data1" Pagination="pagination" TGridItem="BlogData" Style="">
+            <ChildContent>
+                @if (pagination.TotalItemCount != null && pagination.ItemsPerPage > 0)
+                {
+                    int pageIndex = pagination.CurrentPageIndex;
+                    int totalCount = (int)pagination.TotalItemCount;
+                    int pageSize = pagination.ItemsPerPage;
+                    int startIndex = pageIndex * pageSize;
+                    int endIndex = Math.Min(startIndex + pageSize, totalCount);
+                    var recordsForPage = data1.Skip(startIndex).Take(pageSize).ToList();
+
+                    <FluentStack>
+                        <FluentGrid style="width:82rem !important">
+                            @if (data != null && data.Count > 0)
+                            {
+                                @foreach (var k in recordsForPage.GroupBy(obj => obj.PostedDate).OrderBy(x => x.Key).Reverse())
+                                {
+                                    @foreach (var i in recordsForPage.Where(x => x.PostedDate == k.Key).ToList())
+                                    {
+                                        var uniqueId = $"delay3_{i.Id}";
+                                        if (i.PostedBy == userInfo.UserId || i.WfStatusTypeId.ToString() ==  StringEnums.GetStringValue(ReqStatusTypes.Approved))
+                                        {
+
+                                            <FluentGridItem xs="12" sm="6" md="4" lg="4" Style="margin-top:2px">
+                                                <FluentCard Style="width:100%">
+
+                                                    <FluentGrid AdaptiveRendering="true" Style="margin-top:2px;height:4rem">
+
+                                                        <FluentLabel Id="@uniqueId" Typo="Typography.H4" style="line-height: 1.2; word-wrap: break-word; word-break: break-all;margin-top:2px;" @onclick="() => NavigateToBlogPostPage(i.Id)" title="@i.Title">
+                                                            @TruncateTitle(i.Title)
+                                                        </FluentLabel>
+                                                    </FluentGrid>
+
+                                                    <FluentGrid>
+                                                        @if (!GetImageSources(i.BlogContent).Any())
+                                                        {
+                                                            <img src="images/NoImage.jpg" alt="Default Image" style="height: 200px; width: 100%; border-radius: 12px;margin-top:15px" @onclick="() => NavigateToBlogPostPage(i.Id)" />
+                                                        }
+                                                        else
+                                                        {
+                                                            var imageSources = GetImageSources(i.BlogContent);
+                                                            bool imageDisplayed = false;
+
+                                                            foreach (var imageSrc in imageSources)
+                                                            {
+                                                                if (!imageDisplayed && imageSrc != null && imageSrc.Length > 0)
+                                                                {
+                                                                    <img src="@imageSrc" style="height: 200px; width: 100%; border-radius: 12px;margin-top:15px;" @onclick="() => NavigateToBlogPostPage(i.Id)">
+                                                                    imageDisplayed = true;
+                                                                }
+                                                            }
+                                                        }
+                                                    </FluentGrid>
+
+                                                    <FluentGrid Style="display:flex;margin-top:30px">
+                                                        <FluentGrid AdaptiveRendering="true">
+                                                            <FluentLabel Typo="Typography.H5" Style="font-family:italic">@i.CreatedUserName </FluentLabel>
+                                                        </FluentGrid>
+
+                                                        <FluentGrid AdaptiveRendering="true" Style="font-weight:initial; color: grey; float:right;">
+                                                            - posted on @(i.PostedDate.ToString("MMMM dd, yyyy"))
+                                                        </FluentGrid>
+
+                                                        @if (i.IssaveAsDraft)
+                                                        {
+                                                            <FluentGridItem Style=" padding: 0px;  width: auto; margin-left: 10px; display: flex;  align-items: center;  justify-content: center;">
+                                                                <FluentIcon class="draftImg" Value="@(Icon.FromImageUrl("/images/DraftIcon_New.png"))" Style="width:15px"></FluentIcon>
+
+                                                            </FluentGridItem>
+                                                        }
+                                                    </FluentGrid>
+
+                                                    <FluentGrid>
+                                                        @{
+                                                            var blogContent = i.BlogContent;
+                                                            string strippedContent = StripHtml(blogContent);
+                                                            string truncatedContent = TruncateBlogContent(blogContent, 119);
+                                                            string viewLink = string.Empty;
+
+
+                                                            if (strippedContent.Length > 119)
+                                                            {
+                                                                viewLink = $"<a href=\"/blog/{i.Id}\">  View Full Blog</a>";
+                                                            }
+                                                        }
+
+                                                        <FluentLabel Typo="Typography.Body" Style="margin-top:30px;height:4rem">
+                                                            <span>@((MarkupString)(truncatedContent + viewLink))</span>
+                                                        </FluentLabel>
+                                                    </FluentGrid>
+                                                    <FluentTooltipProvider />
+                                                    <FluentGridItem xs="12" Style="border-radius: 7px;margin-top: 30px; margin-bottom: 13px;">
+                                                        <FluentGrid Style="" HorizontalAlignment="HorizontalAlignment.Start">
+                                                            @if (likeList != null && userInfo != null)
+                                                            {
+                                                                var ReactionId = likeList.Where(x => x.BlogId == i.Id && x.PostedBy == userInfo.Id)
+                                                                .Select(x => x.ReactionId)
+                                                                .FirstOrDefault();
+
+                                                                var likeCount = likeList.Where(x => x.BlogId == i.Id && x.ReactionId == ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.Like))).ToList().Count();
+                                                                var disLikeCount = likeList.Where(x => x.BlogId == i.Id && x.ReactionId == ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.DisLike))).ToList().Count();
+
+                                                                <FluentGridItem xs="4" sm="4" md="4">
+                                                                    @if (ReactionId == ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.Like)))
+                                                                    {
+                                                                        <FluentIcon Value="@(Icon.FromImageUrl("/images/mdi_like (1).svg"))" @onclick="()=>{likeHandler(i.Id, ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.Empty)));}" Style=" width: 15px !important; margin-left: -8px;margin-top: -5px;" />
+
+                                                                        likeCount += -1;
+                                                                        if (likeCount > 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left:3px; font-weight: bold;">   @likeCount Likes </span>
+                                                                        }
+                                                                        else if (likeCount == 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 6px; font-weight: bold;">  @likeCount  Like </span>
+                                                                        }
+                                                                        else if (likeCount == 0)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 6px; font-weight: bold;">  Like </span>
+                                                                        }
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <FluentIcon Value="@(Icon.FromImageUrl("/images/mdi_like-outline (1).svg"))" @onclick="()=>likeHandler(i.Id, ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.Like)))" Style=" width: 15px !important; margin-left: -8px;margin-top: -5px;" />
+                                                                        @if (likeCount > 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 3px; font-weight: bold;">   @likeCount Likes </span>
+                                                                        }
+                                                                        else if (likeCount == 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 6px; font-weight: bold;">  @likeCount  Like </span>
+                                                                        }
+                                                                        else if (likeCount == 0)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 6px; font-weight: bold;">    Like </span>
+                                                                        }
+
+                                                                    }
+                                                                </FluentGridItem>
+
+                                                                <FluentGridItem xs="4" sm="4" md="4">
+                                                                    @if (ReactionId == ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.DisLike)))
+                                                                    {
+                                                                        <FluentIcon Value="@(Icon.FromImageUrl("/images/mdi_like.svg"))" @onclick="()=>likeHandler(i.Id, ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.Empty)))" Style=" width: 15px !important; margin-left:-8px;margin-top: -5px;" />
+
+                                                                        disLikeCount += -1;
+                                                                        if (disLikeCount > 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 2px; font-weight: bold;"> Dislikes</span>
+                                                                        }
+                                                                        else if (disLikeCount == 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 2px; font-weight: bold;"> Dislike</span>
+                                                                        }
+                                                                        else if (disLikeCount == 0)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 2px; font-weight: bold;"> Dislike</span>
+                                                                        }
+
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <FluentIcon Value="@(Icon.FromImageUrl("/images/mdi_like-outline.svg"))" Style=" width: 15px !important; margin-left:-8px;margin-top:0px;" @onclick="()=>likeHandler(i.Id, ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.DisLike)))" type="button" />
+                                                                        @if (disLikeCount > 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 2px; font-weight: bold;"> Dislikes</span>
+
+                                                                        }
+
+                                                                        else if (disLikeCount == 1)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 2px; font-weight: bold;"> Dislike</span>
+                                                                        }
+                                                                        else if (disLikeCount == 0)
+                                                                        {
+                                                                            <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 2px; font-weight: bold;"> Dislike</span>
+                                                                        }
+                                                                    }
+
+                                                                </FluentGridItem>
+                                                            }
+                                                            else
+                                                            {
+                                                                <FluentGridItem xs="4" sm="4" md="4">
+                                                                    <img src="images/like.svg" @onclick="()=>likeHandler(i.Id, ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.Like)))" style="max-height:15px;" type="button" />
+                                                                    <span style="position:absolute;padding-left:10px;font-size: 11px;padding-top: 1px;">  Like</span>
+                                                                </FluentGridItem>
+
+                                                                <FluentGridItem xs="12" sm="3" md="3">
+                                                                    <img src="/images/solar_dislike-outline.png" style="max-height:15px;" @onclick="()=>likeHandler(i.Id, ObjectId.Parse(StringEnums.GetStringValue(ReactionTypes.DisLike)))" type="button" />
+                                                                    <span style="position:absolute;padding-left:10px;font-size: 11px;padding-top: 1px;"> Dislike</span>
+                                                                </FluentGridItem>
+                                                            }
+
+                                                            <FluentGridItem xs="4" sm="4" md="4" Style="display:flex">
+                                                                @{
+                                                                    if (CommentList != null)
+                                                                    {
+
+                                                                        commentCount = CommentList.Where(x => x.BlogId == i.Id).ToList().Count();
+                                                                    }
+                                                                }
+
+
+                                                                <img src="images/comment.svg" style="max-height:14px;" type="button" />
+                                                                @if (commentCount == 0)
+                                                                {
+                                                                    <span style="max-height:18px;font-size: 11px;font-family: 'Poppins';padding-left: 10px;font-weight: bold;">Comment</span>
+                                                                }
+                                                                else if (commentCount == 1)
+                                                                {
+                                                                    <span style="max-height:18px;font-size: 11px; font-family: 'Poppins'; padding-left: 10px; font-weight: bold; display:inline-block">@commentCount</span>
+                                                                    <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 6px; font-weight: bold;">Comment</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span style="max-height:18px;font-size: 11px; font-family: 'Poppins'; padding-left: 10px; font-weight: bold; display:inline-block">@commentCount</span>
+                                                                    <span style="font-size: 11px; font-family: 'Poppins'; padding-left: 6px; font-weight: bold;">Comments</span>
+                                                                }
+
+                                                            </FluentGridItem>
+                                                        </FluentGrid>
+                                                    </FluentGridItem>
+                                                    @if (i.Id == commentId && commentArea)
+                                                    {
+                                                        <FluentGridItem xs="12" sm="10" md="12">
+                                                            <FluentTextArea @bind-Value=comment style="width: 100%; max-height: 32px;margin-top: 19px;margin-bottom: 10px;" Placeholder="Write your comment Here....Please click Post to submit"></FluentTextArea>
+                                                        </FluentGridItem>
+                                                        <FluentGridItem xs="12" sm="12" md="12" Justify="JustifyContent.FlexEnd">
+                                                            <FluentButton OnClick="async ()=>{await commentHandler(i.Id);}">Post</FluentButton>
+                                                        </FluentGridItem>
+                                                        <FluentGridItem xs="12" sm="12" md="12" Style="">
+
+                                                            @if (CommentList != null)
+                                                            {
+                                                                @foreach (var commentLists in CommentList.Where(x => x.BlogId == i.Id).Reverse().Take(@displayComments).ToList())
+                                                                {
+                                                                    <FluentGrid AdaptiveRendering="true" Justify="JustifyContent.FlexStart">
+                                                                        <FluentGridItem xs="1" Style="margin-top: 23px;">
+                                                                            <FluentProfileMenu FullName=@commentLists.UserName
+                                                                                               Class="ProfileImages"
+                                                                                               Style="line-height: 1.6;padding: 2px;">
+
+                                                                            </FluentProfileMenu>
+                                                                        </FluentGridItem>
+                                                                        <FluentGridItem xs="11">
+                                                                            <FluentGrid AdaptiveRendering="true" Style="margin-left:2px;margin-bottom:3px;">
+                                                                                <FluentLabel Typo="Typography.Body" Style="padding-top:3px;background-color: #F8F8F8;border-radius: 7px;font-size: 10px;margin-top:22px;margin-bottom:5px;">@commentLists.Comment</FluentLabel>
+                                                                            </FluentGrid>
+
+                                                                        </FluentGridItem>
+                                                                    </FluentGrid>
+
+                                                                    <FluentGridItem AdaptiveRendering="true" xs="12" sm="12" md="12" Justify="JustifyContent.FlexEnd" style="flex-direction:column">
+                                                                        <FluentGrid Justify="JustifyContent.FlexEnd" Style="margin-top:18px;flex-direction:column;margin-right: 10px;">
+                                                                            <FluentGrid>
+                                                                                <FluentLabel Typo="Typography.Subject" Style="display: flex; flex-direction:row;padding-bottom: 7px;font-size:5px;">
+                                                                                    ~
+                                                                                    <FluentLabel Typo="Typography.H6" Style="font-size:12px;">
+                                                                                        @commentLists.UserName
+                                                                                    </FluentLabel>
+                                                                                </FluentLabel>
+
+                                                                            </FluentGrid>
+                                                                        </FluentGrid>
+                                                                        <FluentGridItem xs="12" Justify="JustifyContent.FlexEnd" Style="font-size:10px;">
+                                                                            @{
+                                                                                string fotToday = DateTime.Now.ToString("yyyyMMdd");
+                                                                                string today = (commentLists.PostedDate).ToString("yyyyMMdd");
+                                                                                string forPastDay = DateTime.Now.AddDays(-1).ToString("yyyyMMdd");
+
+                                                                                if (today == fotToday)
+                                                                                {
+                                                                                    <span>Today</span>
+                                                                                }
+                                                                                else if (today == forPastDay)
+                                                                                {
+                                                                                    <span>Yesterday</span>
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    @(commentLists.PostedDate.ToString("MMMM d, yyyy"))
+                                                                                }
+
+                                                                            }
+                                                                        </FluentGridItem>
+                                                                    </FluentGridItem>
+                                                                }
+                                                                var viewCount = (CommentList.Where(x => x.BlogId == i.Id).ToList()).Count;
+                                                                if (viewCount > displayComments)
+                                                                {
+                                                                    <FluentLabel type="button" Typo="Typography.Subject" Style="color:#3DAC7D;font-size:10px;justify-content:center;font-weight:bold" @onclick="()=>{displayComments+=3;}">view More</FluentLabel>
+
+                                                                }
+                                                            }
+
+                                                        </FluentGridItem>
+                                                    }
+
+                                                </FluentCard>
+                                            </FluentGridItem>
+
+                                        }
+                                    }
+                                }
+
+                                dataSample = null;
+                            }
+
+                        </FluentGrid>
+
+                    </FluentStack>
+                }
+            </ChildContent>
+        </FluentDataGrid>
+        <FluentPaginator State="@pagination" />
+    }
+}
+else
+{
+    <FluentGrid>
+        <h6 style="justify-content:center; align-items:center;color: #3DAC7D;margin: auto;">No records found !</h6>
+    </FluentGrid>
+
+}
+
+<style>
+    fluent-data-grid-row {
+        display: none;
+    }
+
+    .img {
+        padding: 2px;
+        height: 3rem;
+        background-image: url('/images/HeadingBgImage.png');
+        border-radius: 5px;
+        background-repeat: no-repeat;
+        background-size: cover;
+        background-position: center;
+    }
+
+    .font {
+        font-family: Poppins !important;
+    }
+
+    .fluent-option {
+        background: #fbfbfb;
+    }
+
+    .icon-menu {
+        margin-left: 10px;
+    }
+
+    .neutral::part(control) {
+        border: 1px solid #3dac7d !important;
+        border-radius: 5px;
+    }
+
+    .valid::part(root) {
+        border: 1px solid #3dac7d !important;
+        border-radius: 5px;
+    }
+
+    .outline::part(root) {
+        border: 1px solid #3dac7d !important;
+        border-radius: 5px;
+       
+    }
+
+    .textboxuser {
+        width: 100%;
+    }
+
+        .textboxuser::after {
+            border-bottom: none;
+        }
+
+        .textboxuser::part(root) {
+            border: 1px solid #3dac7d !important;
+            border-bottom-right-radius: 5px !important;
+            border-top-right-radius: 5px !important;
+        }
+
+    fluent-dialog[b-dsxskpj5rr]::part(control) {
+        width: 20rem !important;
+    }
+
+    .fluent-autocomplete-multiselect div[role=listbox][b-hg72r5b4ox] fluent-option:not([disabled])[selectable] {
+        background: #fbfbfb;
+    }
+
+
+
+    .fluent-presence-badge {
+        width: 25px;
+        height: 25px;
+        font-size: 8px;
+        / color: red;
+        / margin-top: -27px;
+        margin-right: 5px;
+    }
+
+    .bgimg {
+        padding: 2px;
+        height: 3rem;
+        background-image: url('/images/HeadingBgImage.png');
+        border-radius: 5px;
+        background-repeat: no-repeat;
+        background-size: cover;
+    }
+
+    .outline::after {
+        border-bottom: none;
+    }
+
+    #classification {
+        min-width: 130px;
+    }
+
+        #classification::part(control) {
+            border: 1px solid #3dac7d !important;
+            border-radius: 5px;
+        }
+
+</style>
+
+
+@code {
+    public BlogData blogModal { get; set; }
+    public List<ObjectId> IdsForPage { get; set; }
+    public List<BlogData> data = new List<BlogData>();
+    public List<BlogData> dataSample = new List<BlogData>();
+    public IQueryable<BlogData> data1;
+    public BlogService blogModel { set; get; }
+    public string Id { set; get; }
+    public UserData userInfo { get; set; }
+    private List<EmployeeData> emp;
+    private FluentSearch searchInputRef;
+    public List<TagTypeData> tagTypes { get; set; }
+    [Inject]
+    private IHttpContextAccessor HttpContextAccessor { get; set; }
+    private ToastMessageService ToastMessageService { get; set; }
+    PaginationState pagination = new PaginationState { ItemsPerPage = 6 };
+
+    [SupplyParameterFromQuery]
+    public bool tosteStatus { set; get; } = false;
+
+    [SupplyParameterFromQuery]
+    public string operation { set; get; }
+
+    [Parameter]
+    [SupplyParameterFromQuery]
+    public string OperationFor { set; get; }
+    public IQueryable<BlogData> queryableData { get; set; }
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            tagTypes= await TagTypeService.GetAllTagTypesAsync();
+            userInfo = await userDataService.GetUserData();
+            BlogSearchFilterModel blogSearch = new BlogSearchFilterModel();
+            CommentList = (await IBlogCommentServices.GetAllAsync());
+            likeList = (await IBlogReactionsServices.GetAllAsync());
+            Loading = true;
+            var retrievedData = await BlogModelService.GetAllAsync(blogSearch);
+            data = retrievedData?.Where(blog => !blog.IsDeleted).ToList() ?? new List<BlogData>();
+            data1 = data.AsQueryable<BlogData>().Where(x => x.PostedBy == userInfo.UserId || x.WfStatusTypeId.ToString() ==  StringEnums.GetStringValue(ReqStatusTypes.Approved)).Reverse();
+            Cultures1=(await BlogModelService.GetAllUserAsync()).ToList();
+            Cultures2 = (await BlogModelService.GetTagNameAsync());
+
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+        }
+       
+        if (data is null && data.Count == 0)
+        {
+            MessageDisplay = "No Records Found!";
+            data = new List<BlogData>();
+        }
+        ToastMessageService = myStateContainer.Value;
+        Loading = false;
+    }
+
+    protected async override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            userInfo = await userDataService.GetUserData();
+            searchInputRef.FocusAsync();
+        }
+        if (ToastMessageService != null)
+        {
+            if (ToastMessageService.tosteStatus)
+            {
+                Toaster();
+
+            }
+            ToastMessageService.tosteStatus = false;
+
+        }
+    }
+
+    private async Task GetAllData()
+    {
+        Loading = true;
+        await SearchBlogs();
+        Loading = false;
+        StateHasChanged();
+    }
+
+
+    private void ClickComment(ObjectId blogPostId)
+    {
+        Navigation.NavigateTo($"/blog/{blogPostId}");
+    }
+
+    private IEnumerable<string> GetImageSources(string blogContent)
+    {
+        var regex = new Regex(@"<img\s+[^>]*?src\s*=\s*(['""])(.*?)\1", RegexOptions.IgnoreCase);
+        var matches = regex.Matches(blogContent);
+        foreach (Match match in matches)
+        {
+            yield return match.Groups[2].Value;
+        }
+    }
+
+    private string RemoveImagesFromContent(string blogContent)
+    {
+        return Regex.Replace(blogContent, @"<img\s+[^>]*>", "");
+    }
+
+    private void NavigateToBlogPostPage(ObjectId blogPostId)
+    {
+        Navigation.NavigateTo($"/blog/{blogPostId}");
+    }
+
+    private string TruncateBlogContent(string blogContent, int maxLength)
+    {
+        if (string.IsNullOrEmpty(blogContent))
+            return string.Empty;
+        string strippedContent = StripHtml(blogContent);
+        if (strippedContent.Length <= maxLength)
+            return strippedContent;
+
+        return $"{strippedContent.Substring(0, maxLength)}...";
+    }
+
+    public string StripHtml(string input)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(input, "<.*?>", string.Empty).Trim();
+    }
+
+    private string TruncateTitle(string title)
+    {
+        if (title.Length <= 66)
+            return title;
+        else
+            return title.Substring(0, 66) + "...";
+    }
+
+    private string GetAnchorId(ObjectId id) => $"anchor-{id}";
+    public bool IsSaveDraft { get; set; } = false;
+    public bool Loading { get; set; } = true;
+    public bool dropDownLoading1 { get; set; }
+
+    IEnumerable<UserData> userslist = Array.Empty<UserData>();
+    IEnumerable<UserData> Cultures1 = Array.Empty<UserData>();
+    IEnumerable<TagData> Cultures2 = Array.Empty<TagData>();
+    private void OnSearchBlog1(OptionsSearchEventArgs<UserData> e)
+    {
+
+        e.Items = Cultures1.Where(culture =>
+        culture.UserName.Contains(e.Text, StringComparison.OrdinalIgnoreCase)).OrderBy(x => x.UserName); ;
+    }
+
+    IEnumerable<TagData> TagName = Array.Empty<TagData>();
+    IEnumerable<TagData> tagslists = Array.Empty<TagData>();
+    private void OnSearchTag(OptionsSearchEventArgs<TagData> e)
+    {
+        if (Cultures2 != null)
+        {
+           ObjectId Id =tagTypes.Where(x => x.TagName == "Blog").Select(x => x.Id).FirstOrDefault();
+
+            e.Items = Cultures2
+                   .Where(culture1 => culture1.TagName.Contains(e.Text, StringComparison.OrdinalIgnoreCase) && (culture1.TagTypeId.Any(x => x==Id)) && (culture1.IsDeleted == false))
+                     .OrderBy(culture1 => culture1.TagName)
+                     .ToList();
+         
+
+        }
+
+    }
+
+    public void PostBlog()
+    {
+        var queryStrDict = new Dictionary<string, string>
+            {
+                ["OperationFor"] = "Blog",
+
+            };
+        Navigation.NavigateTo(Microsoft.AspNetCore.WebUtilities.QueryHelpers.AddQueryString("/text", queryStrDict));
+    }
+
+    public string postedBy { get; set; }
+    public DateTime? SelectedFrom { get; set; }
+    public DateTime? SelectedTo { get; set; }
+    private string blogContent = "";
+    public string blogTitle = "";
+    public bool postedByStatus { get; set; } = false;
+    public string? MessageDisplay { get; set; }
+    public string tagName = "";
+    public string dateFilter { get; set; }
+    public bool display { get; set; } = true;
+
+    private async Task SearchBlogs()
+    {
+        DateTime? fromDate = SelectedFrom;
+        DateTime? toDate = SelectedTo;
+        int dateFilterDays = 0;
+        if (!string.IsNullOrEmpty(dateFilter))
+        {
+            dateFilterDays = int.Parse(dateFilter);
+        }
+
+        DateTime? filterDate = dateFilterDays > 0 ? DateTime.Now.AddDays(-dateFilterDays) : (DateTime?)null;
+
+        BlogSearchFilterModel blogSearch = new BlogSearchFilterModel()
+            {
+                Title = blogTitle,
+                BlogContent = blogContent,
+                PostedBy = userslist!=null ? userslist.Select(x => x.Id).ToList() : new List<ObjectId>(),
+                dateFilter = filterDate,
+                //TagIds = tagslists.Where(tag => !tag.IsDeleted).Select(x => x.Id).ToList() : new List<ObjectId>(),
+                TagIds = tagslists.Where(tag => !tag.IsDeleted).Select(x => x.Id).ToList(),
+            };
+
+        data = await BlogModelService.GetAllAsync(blogSearch);
+        data1 = data.Where(x => !x.IsDeleted).AsQueryable<BlogData>().Where(x => x.PostedBy== userInfo.UserId || x.WfStatusTypeId.ToString() ==  StringEnums.GetStringValue(ReqStatusTypes.Approved)).Reverse();
+
+        if (data1.Count() == 0)
+        {
+            display = false;
+            MessageDisplay = "No Records Found!";
+            data = new List<BlogData>();
+            return;
+        }
+        else
+        {
+            display = true;
+        }
+        StateHasChanged();
+    }
+
+    private static string defaultResultsText = "No results";
+    public async Task Refresh()
+    {
+        SelectedFrom = null;
+        SelectedTo = null;
+        dateFilter ="0";
+        blogContent = string.Empty;
+        blogTitle = string.Empty;
+        data1 = data.AsQueryable<BlogData>().Where(x => x.PostedBy== userInfo.UserId || x.WfStatusTypeId.ToString() ==  StringEnums.GetStringValue(ReqStatusTypes.Approved)).Reverse();
+        postedByStatus = false;
+        userslist = Array.Empty<UserData>();
+        tagslists = Array.Empty<TagData>();
+        await SearchBlogs();
+    }
+
+
+    public int count = 0;
+    private async Task ShowWarningAsync(string str)
+    {
+        var dialog = await DialogService.ShowWarningAsync(str + "!");
+        var result = await dialog.Result;
+
+    }
+    bool? canceled;
+
+    private async Task ShowSuccessAsync()
+    {
+        var dialog = await DialogService.ShowSuccessAsync(operation);
+        var result = await dialog.Result;
+        canceled = result.Cancelled;
+    }
+
+    private void Toaster()
+    {
+        ToastService.ShowSuccess(ToastMessageService.operation, 5000);
+    }
+
+
+    public bool commentStatus { get; set; }
+    public ObjectId commentId { set; get; }
+    public string comment { get; set; }
+    public List<BlogCommentData> CommentList { get; set; }
+    private bool commentArea = false;
+    public List<BlogReactionData> likeList { get; set; }
+    public int ReactionId { get; set; }
+    public int displayComments { get; set; } = 3;
+    public int commentCount { get; set; }
+
+    public async Task commentHandler(ObjectId id)
+    {
+        if (id != null && comment != null)
+        {
+            commentStatus = await IBlogCommentServices.SaveAsync(new BlogCommentData()
+                {
+                    BlogId = id,
+                    Comment = comment,
+                    IsDeleted = false,
+                    PostedDate = DateTime.UtcNow,
+                    PostedBy = userInfo.UserId
+
+                });
+            comment = null;
+            //  commentArea = !commentArea;
+            displayComments = 3;
+            CommentList = (await IBlogCommentServices.GetAllAsync());
+            StateHasChanged();
+        }
+
+    }
+    public async Task openComment(ObjectId id)
+    {
+        commentArea = !commentArea;
+        commentId = id;
+        displayComments = 3;
+        await Task.Delay(100);
+    }
+    public async Task likeHandler(ObjectId id, ObjectId operationId)
+    {
+        if (id != null && operationId != null)
+        {
+            BlogReactionData model = await IBlogReactionsServices.GetByIdAsync(id, userInfo.UserId);
+            if (model != null)
+            {
+                model.ReactionId = operationId;
+                bool isSuccess = await IBlogReactionsServices.SaveAsync(model);
+            }
+            else
+            {
+
+                await IBlogReactionsServices.SaveAsync(new BlogReactionData()
+                    {
+                        BlogId = id,
+                        ReactionId = operationId,
+                        IsDeleted = false,
+                        PostedDate = DateTime.Now,
+                        PostedBy = userInfo.UserId
+                    });
+            }
+        }
+        likeList = (await IBlogReactionsServices.GetAllAsync());
+        StateHasChanged();
+    }
+}
