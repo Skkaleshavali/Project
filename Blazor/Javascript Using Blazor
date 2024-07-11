@@ -1,0 +1,141 @@
+Js file:-
+window.chartsForQuestions = function (names, counts) {
+    if (names.length > 0 && counts.length > 0) {
+
+
+        var names = names;
+        var counts = counts;
+
+
+        var seriesData = names.map(function (name, index) {
+            return { name: name, data: [counts[index], 0] };
+        });
+
+        var options = {
+            series: seriesData,
+            chart: {
+                type: 'bar',
+                height: 300
+            },
+            plotOptions: {
+                bar: {
+                    horizontal: false,
+                    columnWidth: '55%',
+                    endingShape: 'rounded'
+                }
+            },
+            dataLabels: {
+                enabled: false
+            },
+            stroke: {
+                show: true,
+                width: 2,
+                colors: ['transparent']
+            },
+
+            yaxis: {
+                title: {
+                    text: 'Questions - ytd'
+                }
+            },
+            xaxis: {
+                labels: {
+                    show: false
+                },
+            },
+            fill: {
+                opacity: 1
+            },
+            tooltip: {
+                y: {
+                    formatter: function (val) {
+                        return val;
+                    }
+                }
+            }
+        };
+
+        var chart = new ApexCharts(document.querySelector("#chart"), options);
+        chart.render();
+    }
+}
+................................................................................................
+Calling JS file:-
+using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
+
+namespace FusionPortal.Components.Pages.Dashboards
+{
+    public partial class Charts : ComponentBase
+    {
+        public string[] blogTagNames { get; set; }
+        public int[] blogTagCounts { get; set; }
+
+        public List<TagData> tagNames { get; set; }
+        public List<BlogData> blogData { get; set; }
+        public List<QuestionWithAnswersModel> questionData { get; set; }
+
+        protected async override Task OnAfterRenderAsync(bool firstRender)
+        {
+           await GetData().ConfigureAwait(false);
+        }
+        public async Task<Object[]> GetData()
+        {
+            try
+            {
+                tagNames = await BlogModelService.GetTagNameAsync().ConfigureAwait(false);
+                blogData = await BlogModelService.GetAllAsync(new BlogSearchFilterModel()).ConfigureAwait(false);
+                questionData = await QuestionService1.GetAllAsync(new QusetionSearchFilterModel()).ConfigureAwait(false);
+
+                var blogList = blogData.Where(x => x.PostedDate.Year == DateTime.UtcNow.Year).GroupBy(x => x.TagId);
+                var questionList = questionData.Where(x => x.Question.CreatedDate.Year == DateTime.UtcNow.Year).GroupBy(x => x.Question.TagId);
+
+                var blogCounts = new List<int>();
+                var blogNames = new List<String>();
+
+                var questionCounts = new List<int>();
+                var questionNames = new List<String>();
+
+                foreach (var tagData in blogList)
+                {
+                    blogNames.Add(tagNames.Where(x => x.Id == tagData.Key).Select(x => x.TagName).FirstOrDefault());
+                    blogCounts.Add(tagData.Count());
+                }
+                blogTagNames = blogNames.ToArray();
+                blogTagCounts = blogCounts.ToArray();
+
+                foreach (var tagData in questionList)
+                {
+                    questionNames.Add(tagNames.Where(x => x.Id == tagData.Key).Select(x => x.TagName).FirstOrDefault());
+                    questionCounts.Add(tagData.Count());
+                }
+
+                var groupedDateForBlog = blogData
+                .GroupBy(x => new { x.PostedDate.Year, x.PostedDate.Month })
+                .Where(g => g.Key.Year == DateTime.UtcNow.Year && g.Key.Month <= DateTime.UtcNow.Month) 
+                .OrderBy(g => g.Key.Year)
+                .ThenBy(g => g.Key.Month)
+                .Select(g => new { Month = g.Key.Month, Count = g.Count() });
+
+                var groupedDateForQA = questionData.GroupBy(x => new { x.Question.CreatedDate.Year, x.Question.CreatedDate.Month }).Where(x => x.Key.Year == DateTime.UtcNow.Year && x.Key.Month<=DateTime.UtcNow.Month)
+                                 .OrderBy(g => g.Key.Year)
+                                 .ThenBy(g => g.Key.Month)
+                                 .Select(g => new { Month = g.Key.Month, Count = g.Count() });
+                if (blogNames.Count()!=0 && questionNames.Count() != 0)
+                {
+                    await JSRuntime.InvokeVoidAsync("chartsForBlog", new Object[] { blogNames.ToArray(), blogCounts.ToArray() }).ConfigureAwait(false);
+                    await JSRuntime.InvokeVoidAsync("chartsForQuestions", new Object[] { questionNames.ToArray(), questionCounts.ToArray() }).ConfigureAwait(false);
+                    await JSRuntime.InvokeVoidAsync("cardCharts", new Object[] { groupedDateForBlog.ToArray(), groupedDateForQA.ToArray() }).ConfigureAwait(false);
+
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+
+            return [];
+        }
+    }
+}
+.................................................................................................................
