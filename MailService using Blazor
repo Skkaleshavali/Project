@@ -1,0 +1,105 @@
+  public async Task MailGenerationForBlog(IUserDataService userDataService, SmptSettingsModel smptSettingsModel, BlogData selectedBlog, MailData mailData)
+  {
+
+
+      var adminInfo = await userDataService.GetUserData().ConfigureAwait(false);
+      var userInfo = await userDataService.GetUserByUserId(selectedBlog.PostedBy).ConfigureAwait(false);
+      using (var message = new MimeMessage())
+      {
+          message.From.Add(new MailboxAddress("FusionApp", smptSettingsModel?.Email));
+          message.To.Add(new MailboxAddress("Recipient Name", userInfo?.EmailId));
+
+          message.Subject = mailData?.Subject;
+
+          var bodyBuilder = new BodyBuilder()
+          {
+              HtmlBody = mailData?.Content.Replace("{@selectedBlog.Title}", selectedBlog.Title, StringComparison.OrdinalIgnoreCase)
+                           .Replace("{@userInfo.UserName}", userInfo?.UserName, StringComparison.OrdinalIgnoreCase)
+          };
+          message.Body = bodyBuilder.ToMessageBody();
+
+          using (var client = new MailKit.Net.Smtp.SmtpClient())
+          {
+              await client.ConnectAsync(smptSettingsModel?.Host, smptSettingsModel.Port, false).ConfigureAwait(false);
+              await client.AuthenticateAsync(smptSettingsModel.Email, smptSettingsModel.Password).ConfigureAwait(false);
+              await client.SendAsync(message).ConfigureAwait(false);
+              await client.DisconnectAsync(true).ConfigureAwait(false);
+          }
+
+      }
+
+  }
+.......................................................................................................................
+  public class SmptSettingsModel
+  {
+
+      public string Email { get; set; }
+      public string Password { get; set; }
+      public string Host { get; set; }
+      public int Port { get; set; }
+  }
+.......................................................................................................................
+In appsetting.json file:-
+
+{
+  "Google": {
+    "Instance": "https://accounts.google.com/o/oauth2/v2/auth",
+    "ClientId": "308964719944-vpv54rks2t2seq6fqirgsikjgqgjbuld.apps.googleusercontent.com",
+    "ClientSecret": "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",
+    "CallbackPath": "/signin-google"
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=Data\\app.db",
+    "FusionDataDB": "mongodb://192.168.1.26:27017",
+    "redis": "192.168.1.26:6379"
+  },
+  "DetailedErrors": true,
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "Microsoft.AspNetCore.SignalR": "Warning"
+    }
+  },
+  "LoggingSettings": {
+    "MinLogLevel": "Debug",
+    "LogToConsole": true,
+    "RegularFileName": "c:/logs/fusionportal/logger.${loglevel}.log"
+  },
+  "AppConfig": {
+    "RedisEnv": "dev"
+  },
+  "SmtpSettings": {
+    "Email": "kaleshavalishaik013@gmail.com",
+    "Password": "ayiu wvsk rxmx hwjp",
+    "Host": "smtp.gmail.com",
+    "Port": 587
+  },
+
+  "AllowedHosts": "*"
+}
+.................................................................................
+ In program.cs:-
+Task.Run(async () =>
+ {
+     await DB.InitAsync("FusionDb", "192.168.1.26").ConfigureAwait(false); //TODO:KK get from config
+ })
+.GetAwaiter()
+.GetResult();
+
+ services.AddSignalR(e =>
+ {
+     e.MaximumReceiveMessageSize = 10240000;
+ });
+
+ //Automapper
+ builder.Services.AddAutoMapper(Assembly.GetAssembly(typeof(MappingProfile)));
+ smtpSettings = builder.Configuration.GetSection("SmtpSettings").Get<SmptSettingsModel>();
+
+ var smptSettingsModel = new SmptSettingsModel();
+ smptSettingsModel.Email = smtpSettings.Email;
+ smptSettingsModel.Password = smtpSettings.Password;
+ smptSettingsModel.Host=smtpSettings.Host;
+ smptSettingsModel.Port= smtpSettings.Port;
+ services.AddSingleton<SmptSettingsModel>(smptSettingsModel);
